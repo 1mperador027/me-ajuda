@@ -2,25 +2,22 @@
 
 Comparador de preços de eletrônicos para o Brasil.
 
-## Estado da integração
+## Integrações e estado
 
-- **Mercado Livre:** busca pública pelo catálogo do site MLB implementada no endpoint `/api/search`.
-- **Amazon:** conector pendente de acesso aprovado à Creators API e credenciais de Associados.
-- **Magalu:** conector pendente de habilitação comercial/API para o canal de parceiro.
-- **Shopee:** conector pendente de aprovação/acesso à Open API de afiliados e credenciais.
+- **Mercado Livre:** endpoint de busca implementado com OAuth Bearer token. Configure `ML_ACCESS_TOKEN` na Vercel. O acesso também depende das permissões e políticas aplicadas à aplicação no DevCenter.
+- **Amazon:** requer aprovação no programa de Associados, acesso à Creators API e credenciais.
+- **Magalu:** requer habilitação comercial/API e credenciais de parceiro.
+- **Shopee:** requer acesso aprovado à Open API de afiliados e credenciais.
 
 O sistema não inventa ofertas: fontes sem acesso configurado aparecem como pendentes.
 
-## Publicação
-
-Projeto compatível com Vercel. A pasta `api/` contém funções serverless; `index.html` é a interface estática.
-
 ## Variáveis de ambiente
 
-Configure somente no painel da Vercel (Settings → Environment Variables), nunca no GitHub:
+Configure em Vercel → Project → Settings → Environment Variables. Nunca coloque tokens no GitHub.
 
 | Variável | Loja |
 |---|---|
+| `ML_ACCESS_TOKEN` | Mercado Livre OAuth |
 | `AMAZON_PARTNER_TAG` | Amazon Associados |
 | `AMAZON_CREDENTIAL_ID` | Amazon Creators API |
 | `AMAZON_CREDENTIAL_SECRET` | Amazon Creators API |
@@ -29,15 +26,8 @@ Configure somente no painel da Vercel (Settings → Environment Variables), nunc
 | `SHOPEE_APP_ID` | Shopee Open API |
 | `SHOPEE_APP_SECRET` | Shopee Open API |
 
-A presença das variáveis não substitui aprovação, contrato, escopo ou homologação exigidos pela loja. Não coloque segredos em arquivos públicos.
+Um token do Mercado Livre pode expirar. Para operação contínua, será necessário implementar OAuth com refresh token e armazenamento seguro/rotativo, ou atualizar o token manualmente durante a fase de testes. A presença de credenciais não substitui aprovação, escopos ou permissões exigidas pela loja.
 
-## Desenvolvimento local
+## Desenvolvimento
 
-Requer Node.js e Vercel CLI para executar a função serverless:
-
-```bash
-npm i -g vercel
-vercel dev
-```
-
-A interface consulta `/api/search?q=termo`.
+A interface está em `index.html`; a função serverless está em `api/search.js`.
