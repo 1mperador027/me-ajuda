@@ -1,5 +1,5 @@
 const SOURCES = {
-  mercadolivre: { name: "Mercado Livre", env: [], mode: "live" },
+  mercadolivre: { name: "Mercado Livre", env: ["ML_ACCESS_TOKEN"], mode: "oauth_required" },
   amazon: { name: "Amazon", env: ["AMAZON_PARTNER_TAG", "AMAZON_CREDENTIAL_ID", "AMAZON_CREDENTIAL_SECRET"], mode: "credentials_required" },
   magalu: { name: "Magalu", env: ["MAGALU_API_BASE_URL", "MAGALU_API_TOKEN"], mode: "partner_access_required" },
   shopee: { name: "Shopee", env: ["SHOPEE_APP_ID", "SHOPEE_APP_SECRET"], mode: "affiliate_api_access_required" }
@@ -43,30 +43,59 @@ module.exports = async (req, res) => {
   if (q.length < 2) return res.status(400).json({ error: "Digite pelo menos 2 caracteres." });
 
   const statuses = Object.fromEntries(Object.entries(SOURCES).map(([key, value]) => [key, statusFor(value)]));
-  let products = [];
-  let errors = [];
+  const token = process.env.ML_ACCESS_TOKEN;
+  if (!token) {
+    return res.status(200).json({
+      query: q, total: 0, products: [], sources: statuses, errors: [{
+        source: "Mercado Livre",
+        code: "ML_ACCESS_TOKEN_MISSING",
+        message: "Configure ML_ACCESS_TOKEN nas variáveis de ambiente da Vercel."
+      }],
+      note: "A busca do Mercado Livre requer uma aplicação autorizada e um access token válido."
+    });
+  }
 
   try {
     const url = new URL("https://api.mercadolibre.com/sites/MLB/search");
     url.searchParams.set("q", q);
     url.searchParams.set("limit", "30");
     const response = await fetch(url.toString(), {
-      headers: { Accept: "application/json", "User-Agent": "MeAjuda/1.0 (price comparison)" }
+      headers: { Accept: "application/json", Authorization: "Bearer " + token }
     });
-    if (!response.ok) throw new Error("Mercado Livre respondeu HTTP " + response.status);
-    const payload = await response.json();
-    products = (payload.results || []).map(normalizeMercadoLivre)
-      .filter((p) => Number.isFinite(p.price) && p.price > 0 && p.url);
-  } catch (error) {
-    errors.push({ source: "Mercado Livre", message: error.message || "Falha na consulta." });
-  }
+    const bodyText = await response.text();
+    let payload;
+    try { payload = JSON.parse(bodyText); } catch { payload = { message: bodyText.slice(0, 300) }; }
 
-  return res.status(200).json({
-    query: q,
-    total: products.length,
-    products,
-    sources: statuses,
-    errors,
-    note: "Somente ofertas retornadas por integrações ativas são exibidas. Outras lojas serão ativadas após habilitação das respectivas APIs."
-  });
+    if (!response.ok) {
+      const requestId = response.headers.get("x-request-id") || response.headers.get("x-ml-request-id") || null;
+      const detail = payload.message || payload.error || "A API recusou a requisição.";
+      return res.status(200).json({
+        query: q, total: 0, products: [], sources: statuses,
+        errors: [{
+          source: "Mercado Livre",
+          code: payload.code || payload.error || "HTTP_" + response.status,
+          httpStatus: response.status,
+          requestId,
+          message: response.status === 401
+            ? "Token inválido ou expirado. Gere um novo access token."
+            : response.status === 403
+              ? "A API recusou o acesso (403). Verifique autorização da aplicação, permissões, status da conta e eventual restrição de IP/endpoint no DevCenter."
+              : "Falha na API: " + detail
+        }],
+        note: "Nenhuma oferta foi simulada. Diagnóstico baseado na resposta oficial da API."
+      });
+    }
+
+    const products = (payload.results || []).map(normalizeMercadoLivre)
+      .filter((p) => Number.isFinite(p.price) && p.price > 0 && p.url);
+    return res.status(200).json({
+      query: q, total: products.length, products, sources: statuses, errors: [],
+      note: "Resultados obtidos pela API do Mercado Livre. Preços e disponibilidade podem mudar."
+    });
+  } catch (error) {
+    return res.status(200).json({
+      query: q, total: 0, products: [], sources: statuses,
+      errors: [{ source: "Mercado Livre", code: "NETWORK_ERROR", message: error.message || "Falha de conexão com a API." }]
+    });
+  }
 };
